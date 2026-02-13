@@ -76,7 +76,8 @@ class AuthOidcProvider(AuthProvider):
     async def logout(
         self, request: Request, response: Response
     ) -> Response:
-        # TODO add logout call
+        # We don't implement upstream logout effectively because we don't store the
+        # provider's session/refresh token. We just clear our local session.
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
         response.status_code = status.HTTP_200_OK
@@ -85,11 +86,84 @@ class AuthOidcProvider(AuthProvider):
     async def refresh(
         self, request: Request, response: Response
     ) -> Any:
-        # TODO add refresh call
-        raise NotImplementedError()
+        refresh_token = request.cookies.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing refresh token",
+            )
+
+        try:
+            payload = self._verify_token(refresh_token)
+        except HTTPException:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+
+        if (
+            payload.get("type") != "refresh"
+            or payload.get("auth_provider") != "oidc"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token type",
+            )
+
+        user_id = payload.get("user_id")
+        user_info = payload.get("user_info", {})
+
+        # Create new tokens
+        access_token = self._create_token(
+            data={
+                "type": "access",
+                "auth_provider": "oidc",
+                "oidc": True,
+                "user_id": user_id,
+                "user_info": user_info,
+            },
+            expires_delta=timedelta(
+                minutes=Config.ACCESS_TOKEN_LIFETIME_MIN
+            ),
+        )
+
+        new_refresh_token = self._create_token(
+            data={
+                "type": "refresh",
+                "auth_provider": "oidc",
+                "oidc": True,
+                "user_id": user_id,
+                "user_info": user_info,
+            },
+            expires_delta=timedelta(
+                minutes=Config.REFRESH_TOKEN_LIFETIME_MIN
+            ),
+        )
+
+        # Set cookies
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            samesite="strict",
+            secure=Config.HTTPS,
+            domain=Config.DOMAIN if Config.DOMAIN else None,
+            max_age=Config.ACCESS_TOKEN_LIFETIME_MIN * 60,
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=new_refresh_token,
+            httponly=True,
+            samesite="strict",
+            secure=Config.HTTPS,
+            domain=Config.DOMAIN if Config.DOMAIN else None,
+            max_age=Config.REFRESH_TOKEN_LIFETIME_MIN * 60,
+        )
+
+        response.status_code = status.HTTP_200_OK
+        return response
 
     async def is_authorized(self, request: Request):
-        # TODO add check call
         token = request.cookies.get("access_token")
         if not token:
             raise HTTPException(
@@ -361,6 +435,7 @@ class AuthOidcProvider(AuthProvider):
                 "auth_provider": "oidc",
                 "oidc": True,
                 "user_id": user_id,
+                "user_info": user_claims,
             },
             expires_delta=timedelta(
                 minutes=Config.REFRESH_TOKEN_LIFETIME_MIN

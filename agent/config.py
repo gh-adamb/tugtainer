@@ -12,6 +12,7 @@ class Config:
     AGENT_SIGNATURE_TTL: ClassVar[int]
     DOCKER_TIMEOUT: ClassVar[int]
     DOCKER_HOST: ClassVar[str | None]
+    DOCKER_INSECURE: ClassVar[bool]
 
     @classmethod
     def load(cls):
@@ -29,6 +30,9 @@ class Config:
                 os.getenv("DOCKER_TIMEOUT") or 15
             )
             cls.DOCKER_HOST = os.getenv("DOCKER_HOST") or None
+            cls.DOCKER_INSECURE = (
+                os.getenv("DOCKER_INSECURE", "false").lower() == "true"
+            )
 
 
 Config.load()

@@ -43,6 +43,7 @@ services:
       # The list of available variables is in env.example
       AGENT_SECRET: CHANGE_ME!
       DOCKER_HOST: tcp://socket-proxy:2375
+      DOCKER_INSECURE: ${DOCKER_INSECURE:-false}
     read_only: true
     tmpfs:
       - /run

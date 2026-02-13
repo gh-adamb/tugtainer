@@ -35,6 +35,7 @@ services:
       AGENT_SECRET: testsecret
       LOG_LEVEL: info
       DOCKER_HOST: tcp://socket-proxy:2375
+      DOCKER_INSECURE: ${DOCKER_INSECURE:-false}
     volumes:
       - tugtainer_data_dev:/tugtainer
       - $HOME/.docker/config.json:/root/.docker/config.json:ro
